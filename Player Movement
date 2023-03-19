@@ -1,0 +1,173 @@
+using System.Collections;
+using System.Collections.Generic;
+using Unity.Burst;
+using Unity.VisualScripting;
+using UnityEngine;
+[RequireComponent(typeof(Controller2D))]
+public class Player : MonoBehaviour
+{
+    [Header("Components")]
+    public SpriteRenderer spriteRenderer;
+    [Header("Move and Jump")]
+    public float maxJumpHeight = 4f;
+    public float minJumpHeight = 1f;
+    public float timetoJumpApex = .2f;
+    float maxJumpVelocity;
+    float minJumpVelocity;
+    float velocityXSmoothing;
+    public float accelinAir = .2f;
+    public float accelGrounded = .1f;
+    public float moveSpeed = 6f;
+    public float baseGravity = -20f;
+
+
+    [Header("Special")]
+    public float upDash;
+    public bool canDash;
+    public float dashSpeed;
+    public int jumpCount = 0; // to remember how many jumps you have done
+    const int maxJump = 2; // the max amount of jumps
+
+    public Vector2 wallJumpOff;
+    public Vector2 wallLeap;
+    public float wallStickTime = .25f;
+    public float wallSlideMax = 3f;
+    public float climbSpeed;
+
+
+    [Header("Basic Physics")]
+    public Vector3 velocity;
+    public float gravity = -20f;
+
+
+
+    Controller2D controller;
+    void Start()
+    {
+        controller = GetComponent<Controller2D>();
+        gravity = -(2 * maxJumpHeight) / Mathf.Pow(timetoJumpApex, 2);
+        maxJumpVelocity = Mathf.Abs(gravity) * timetoJumpApex;
+        minJumpVelocity = Mathf.Sqrt(2 * Mathf.Abs(gravity) * minJumpHeight);
+
+        spriteRenderer = GetComponent<SpriteRenderer>();
+    }
+
+
+
+    void Update()
+    {
+        Vector2 input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+        int wallDirX = (controller.collisions.left) ? -1 : 1;
+
+        //Flip 
+        if (input.x < 0)
+        {
+            // Flip the player sprite horizontally
+            spriteRenderer.flipX = true;
+        }
+        else if (input.x > 0)
+        {
+            // Set the flipX property to false to ensure the sprite is not flipped
+            spriteRenderer.flipX = false;
+        }
+        float targetVelocity = input.x * moveSpeed;
+        float currentVelocity = velocity.x;
+
+        if (input.x != 0 && Mathf.Sign(input.x) != Mathf.Sign(currentVelocity))
+        {
+            // If the player is changing direction, set the current velocity to zero
+            currentVelocity = 0f;
+        }
+
+        velocity.x = Mathf.SmoothDamp(currentVelocity, targetVelocity, ref velocityXSmoothing, (controller.collisions.below) ? accelGrounded : accelinAir);
+
+
+
+        bool wallSliding = false;
+        if ((controller.collisions.left || controller.collisions.right) && !controller.collisions.below && velocity.y < 0)
+        {
+            wallSliding = true;
+
+            if (velocity.y < -wallSlideMax)
+            {
+                velocity.y = -wallSlideMax;
+            }
+        }
+
+
+        if (controller.collisions.above || controller.collisions.below)
+        {
+            velocity.y = 0;
+            canDash = true;
+        }
+        if (controller.collisions.left || controller.collisions.right)
+        {
+            canDash = true;
+        }
+
+        if (Input.GetButtonDown("Jump"))
+
+        {
+
+            if (!controller.collisions.isAirborne())
+            {
+                jumpCount = 0;
+                Debug.Log("Airborne works");
+            }
+
+
+            if ((controller.collisions.below) || (controller.collisions.isAirborne() && jumpCount < maxJump))
+            {
+                jumpCount++;
+                velocity.y = maxJumpVelocity;
+                Debug.Log("if ((controller.collisions.below) || (controller.collisions.isAirborne() && jumpCount < maxJump)");
+            }
+
+            if (wallSliding)
+            {
+                if (input.x == 0)
+                {
+                    velocity.x = -wallDirX * wallJumpOff.x;
+                    velocity.y = wallJumpOff.y;
+                }
+
+                else
+                {
+                    velocity.x = -wallDirX * wallLeap.x;
+                    velocity.y = wallLeap.y;
+                }
+            }
+        }
+        //variable jump height
+        if (Input.GetButtonUp("Jump"))
+        {
+            if (velocity.y > 0)
+            {
+                velocity.y = minJumpVelocity;
+            }
+        }
+
+        if (Input.GetButtonDown("Dash") && canDash && !controller.collisions.below)
+        {
+            if (input.x != 0)
+            {
+                velocity.x = input.x * dashSpeed;
+                velocity.y = input.y * upDash;
+            }
+            else if (input.y > 0)
+            {
+                velocity.x = 0f;
+                velocity.y = input.y * upDash;
+            }
+            canDash = false;
+        }
+
+
+
+        //smoothens the movements of the player
+        velocity.x = Mathf.SmoothDamp(velocity.x, targetVelocity, ref velocityXSmoothing, (controller.collisions.below) ? accelGrounded : accelinAir);
+        velocity.y += gravity * Time.deltaTime;
+        controller.Move(velocity * Time.deltaTime);
+    }
+}
+
